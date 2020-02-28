@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # encoding: UTF-8
 """A5/1 cipher"""
+from hashlib import sha256
 
 
 def populate_registers(init_keyword: str) -> tuple:
@@ -10,7 +11,20 @@ def populate_registers(init_keyword: str) -> tuple:
     
     return registers X, Y, Z as a tuple
     """
-    raise NotImplementedError
+    xyz = ""
+    for char in init_keyword:
+        xyz += bin(ord(char))[2:].zfill(8)
+        
+    
+    if len(xyz) < 64:
+        xyz = xyz.ljust(64,"0")
+    
+    x = xyz[:19]
+    y = xyz[19:41]
+    z = xyz[41:]
+    
+    print(len(z))
+    return (x , y, z)
 
 
 def majority(x8_bit: str, y10_bit: str, z10_bit: str) -> str:
@@ -22,8 +36,28 @@ def majority(x8_bit: str, y10_bit: str, z10_bit: str) -> str:
 
     return the value of the majority bit
     """
-    raise NotImplementedError
-
+    if x8_bit == "1":
+        if y10_bit == "1":
+            return "1"
+        else:
+            if z10_bit == "1":
+                return "1"
+            else:
+                return "0"
+    else:
+        if y10_bit == "1":
+            if z10_bit == "0":
+                return "0"
+            else:
+                return "1"
+        else:
+            return "0"
+        
+def cal_XOR(a, b):
+    if a != b:
+        return "1"
+    else:
+        return "0"
 
 def step_x(register: str) -> str:
     """Stepping register X
@@ -32,7 +66,16 @@ def step_x(register: str) -> str:
     
     return new value of the X register
     """
-    raise NotImplementedError
+    x13_bit = register[13]
+    x16_bit = register[16]
+    x17_bit = register[17]
+    x18_bit = register[18]
+    
+    t = cal_XOR(cal_XOR(cal_XOR(x13_bit, x16_bit), x17_bit), x18_bit)
+    
+    register = t + register[:-1]
+    
+    return register
 
 
 def step_y(register: str) -> str:
@@ -42,8 +85,14 @@ def step_y(register: str) -> str:
     
     return new value of the Y register
     """
-    raise NotImplementedError
-
+    y20_bit = register[20]
+    y21_bit = register[21]
+    
+    t = cal_XOR(y20_bit, y21_bit)
+    
+    register = t + register[:-1]
+    
+    return register
 
 def step_z(register: str) -> str:
     """Stepping register Z
@@ -52,7 +101,14 @@ def step_z(register: str) -> str:
     
     return new value of the Z register
     """
-    raise NotImplementedError
+    z7_bit = register[7]
+    z20_bit = register[20]
+    z21_bit = register[21]
+    z22_bit = register[22]
+    
+    t = cal_XOR(cal_XOR(cal_XOR(z7_bit, z20_bit), z21_bit), z22_bit)
+    register = t + register[:-1]
+    return register
 
 
 def generate_bit(x: str, y: str, z: str) -> int:
@@ -62,9 +118,9 @@ def generate_bit(x: str, y: str, z: str) -> int:
     y -- Y register
     z -- Z register
 
-    return a single keystrema bit
+    return a single keystream bit
     """
-    raise NotImplementedError
+    return (int(cal_XOR(cal_XOR(x[18], y[21]), z[22])))
 
 
 def generate_keystream(plaintext: str, x: str, y: str, z: str) -> str:
@@ -77,7 +133,28 @@ def generate_keystream(plaintext: str, x: str, y: str, z: str) -> str:
 
     return keystream
     """
-    raise NotImplementedError
+    result = ""
+    
+    plaintext_binary = ""
+    for char in plaintext:
+        plaintext_binary += bin(ord(char))[2:].zfill(8)
+    
+    #print("binary", plaintext_binary)
+
+    for i in range(0, len(plaintext_binary)):
+        maj = majority(x[8], y[10], z[10])
+        if x[8] == maj:
+            x = step_x(x)
+        if y[10] == maj:
+            y = step_y(y)
+        if z[10] == maj:
+            z = step_z(z)
+
+        bit = generate_bit(x, y, z)
+        
+        result += str(bit)
+        #print(result)
+    return result
 
 
 def encrypt(plaintext: str, keystream: str) -> str:
@@ -88,7 +165,16 @@ def encrypt(plaintext: str, keystream: str) -> str:
 
     return ciphertext
     """
-    raise NotImplementedError
+    result = ""
+    
+    plaintext_binary = ""
+    for char in plaintext:
+        plaintext_binary += bin(ord(char))[2:].zfill(8)    
+    
+    for i in range(0, len(plaintext_binary)):
+        result += cal_XOR(plaintext_binary[i], keystream[i])
+    
+    return result
 
 
 def encrypt_file(filename: str, secret: str) -> None:
@@ -99,13 +185,25 @@ def encrypt_file(filename: str, secret: str) -> None:
 
     return write the result to filename.secret
     """
-    raise NotImplementedError
-
+    r = open(filename, "r")
+    w = open("data/projects/a51/roster.secret", "w")
+    
+    for line in r:
+        x, y, z = populate_registers(secret)
+        keystream = generate_keystream(line, x, y, z)
+        dcm =  encrypt(line, keystream)
+        
+        w.write(hex(int(dcm, 2)) + '\n')
 
 def main():
     """Main function"""
-    pass
 
-
+    encrypt_file("data/projects/a51/roster", "martin")
+    
+    r = sha256(open("data/projects/a51/roster.secret", "rb").read()).hexdigest()
+    print(r)
+ 
+    
+    
 if __name__ == "__main__":
     main()
