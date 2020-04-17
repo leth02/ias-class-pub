@@ -4,10 +4,12 @@
 from socket import socket, gethostname
 from socket import AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
 from typing import Tuple, Dict
+from diffiehellman.diffiehellman import DiffieHellman
 
 HOST = gethostname()
 PORT = 4600
 
+SUPPORTED_CIPHERS = {"AES": [256]}
 
 def parse_proposal(msg: str) -> Dict[str, list]:
     """Parse client's proposal
@@ -15,7 +17,51 @@ def parse_proposal(msg: str) -> Dict[str, list]:
     :param msg: message from the client with a proposal (ciphers and key sizes)
     :return: the ciphers and keys as a dictionary
     """
-    raise NotImplementedError
+    current_cipher = ""
+    ciphers = msg[16:]
+    next = False
+    count = 0
+
+    for i in range(len(ciphers)):
+        if next == True:
+            next = False
+            if count == 1:
+                current_cipher = ciphers[:i] + ";" + ciphers[i+1:]
+            else:
+                current_cipher = current_cipher[:i] + ";" + current_cipher[i+1:] 
+        else:
+            if ciphers[i] == "]":
+                next = True
+                count += 1
+ 
+    result = current_cipher.split(";")
+
+    for i in range(len(result)):
+        result[i] = result[i].split(":")
+        result[i][1] = result[i][1].strip("][").split(",")
+
+    
+    for m in range(len(result)):
+        for n in range(len(result[m][1])):
+            result[m][1][n] = int(result[m][1][n].strip())
+    print("RESULT", result)
+
+    dictionary = {}
+    for i in range(len(result)):
+        dictionary[result[i][0]] = result[i][1] 
+    print(dictionary)
+    return dictionary
+    # final = ""
+    # longest = 0
+    # for i in range(len(result)):
+    #     longest_key = int(result[i][1][len(result[i][1])-1])
+    #     if result[i][0] in SUPPORTED_CIPHERS and longest_key > longest:
+    #         longest = longest_key
+    #         final = "ChosenCipher:" + result[i][0] + ":" + str(longest)
+    # if final == "":
+    #     return "ChosenCipher:None:None"
+
+    # return final
 
 
 def select_cipher(supported: dict, proposed: dict) -> Tuple[str, int]:
@@ -26,7 +72,21 @@ def select_cipher(supported: dict, proposed: dict) -> Tuple[str, int]:
     :return: tuple (cipher, key_size) of the common cipher where key_size is the longest supported by both
     :raise: ValueError if there is no (cipher, key_size) combination that both client and server support
     """
-    raise NotImplementedError
+    longest_key_size = 0
+    result = ("None",0)
+    for key in proposed:
+        if key in supported:
+            keysize_server = supported[key]
+            keysize_client = proposed[key]
+            for keysize in keysize_server:
+                if keysize in keysize_client and keysize > longest_key_size:
+                    result = (key, keysize)
+
+    if result == ("None", 0):
+        raise ValueError('there is no (cipher, key_size) combination that both client and server support')
+    return result
+                
+            
 
 
 def generate_cipher_response(cipher: str, key_size: int) -> str:
@@ -36,7 +96,7 @@ def generate_cipher_response(cipher: str, key_size: int) -> str:
     :param key_size: chosen key size
     :return: (cipher, key_size) selection as a string
     """
-    raise NotImplementedError
+    return "ChosenCipher:" + cipher + ":" + str(key_size)
 
 
 def parse_dhm_request(msg: str) -> int:
@@ -45,7 +105,9 @@ def parse_dhm_request(msg: str) -> int:
     :param msg: client's DHMKE initial message
     :return: number in the client's message
     """
-    raise NotImplementedError
+    result = msg.split(":")
+
+    return int(result[1])
 
 
 def get_key_and_iv(
@@ -111,13 +173,32 @@ def main():
     print(f"New client: {client[0]}:{client[1]}")
 
     print("Negotiating the cipher")
-    cipher_name = "CS"
-    key_size = 460
+    msg_in = conn.recv(4096).decode("utf-8")
+    cipher_dict = parse_proposal(msg_in)
+
+    selected_cipher = select_cipher(SUPPORTED_CIPHERS, cipher_dict)
+
+    #print("SELECTED CIPHER", selected_cipher)
+    cipher_name = selected_cipher[0]
+    key_size = selected_cipher[1]
+
+    cipher_out = generate_cipher_response(cipher_name, key_size)
+    conn.send(cipher_out.encode())
     # Follow the description
     print(f"We are going to use {cipher_name}{key_size}")
 
+
     print("Negotiating the key")
     # Follow the description
+    server_diffiehellman = DiffieHellman(key_length=key_size)
+    server_diffiehellman.generate_public_key()
+    
+    dhm_in = conn.recv(4096).decode("utf-8")
+
+    server_diffiehellman.generate_shared_secret(parse_dhm_request(dhm_in))
+
+    conn.send(generate_dhm_response(server_diffiehellman.public_key))
+
     print("The key has been established")
 
     print("Initializing cryptosystem")

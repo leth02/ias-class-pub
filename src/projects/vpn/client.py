@@ -3,10 +3,14 @@
 
 from socket import socket, gethostname, AF_INET, SOCK_STREAM
 from typing import Tuple, Dict
+from diffiehellman.diffiehellman import DiffieHellman
 
 HOST = gethostname()
 PORT = 4600
 
+
+
+SUPPORTED_CIPHERS = {"AES": [128, 192, 256], "Blowfish": [112, 224, 448], "DES": [56]}
 
 def generate_cipher_proposal(supported: dict) -> str:
     """Generate a cipher proposal message
@@ -14,7 +18,13 @@ def generate_cipher_proposal(supported: dict) -> str:
     :param supported: cryptosystems supported by the client
     :return: proposal as a string
     """
-    raise NotImplementedError
+    proposed_ciphers = "ProposedCiphers:"
+    for key in supported:
+        proposed_ciphers += key + ":" + str(supported[key]) + ","
+    
+    proposed_ciphers = proposed_ciphers[:-1]
+
+    return proposed_ciphers
 
 
 def parse_cipher_selection(msg: str) -> Tuple[str, int]:
@@ -23,7 +33,8 @@ def parse_cipher_selection(msg: str) -> Tuple[str, int]:
     :param msg: server's message with the selected cryptosystem
     :return: (cipher_name, key_size) tuple extracted from the message
     """
-    raise NotImplementedError
+    lst = msg.split(":")
+    return (lst[1], lst[2])
 
 
 def generate_dhm_request(public_key: int) -> str:
@@ -32,7 +43,7 @@ def generate_dhm_request(public_key: int) -> str:
     :param: client's DHM public key
     :return: string according to the specification
     """
-    raise NotImplementedError
+    return "DHMKE:" + str(public_key)
 
 
 def parse_dhm_response(msg: str) -> int:
@@ -41,7 +52,8 @@ def parse_dhm_response(msg: str) -> int:
     :param msg: server's DHMKE message
     :return: number in the server's message
     """
-    raise NotImplementedError
+    result = msg.split(":")
+    return int(result[1])
 
 
 def get_key_and_iv(
@@ -98,13 +110,28 @@ def main():
     print(f"Connected to {HOST}:{PORT}")
 
     print("Negotiating the cipher")
-    cipher_name = "CS"
-    key_size = 460
+    msg_out = generate_cipher_proposal(SUPPORTED_CIPHERS)
+    client_sckt.send(msg_out.encode())
+    msg_in = client_sckt.recv(4096).decode("utf-8")
+    msg_in = parse_cipher_selection(msg_in)
+    cipher_name = msg_in[0]
+    key_size = msg_in[1]
     # Follow the description
     print(f"We are going to use {cipher_name}{key_size}")
 
     print("Negotiating the key")
     # Follow the description
+    client_diffiehellman = DiffieHellman(key_length=key_size)
+    client_diffiehellman.generate_public_key()
+
+    dhm_out = client_diffiehellman.public_key
+    client_sckt.send(generate_dhm_request(dhm_out).encode())
+
+    dhm_in = client_sckt.recv(4096)
+    client_diffiehellman.generate_shared_secret(parse_dhm_reponse(dhm_in))
+
+    
+
     print("The key has been established")
 
     print("Initializing cryptosystem")
