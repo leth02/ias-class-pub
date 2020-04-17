@@ -5,6 +5,8 @@ from socket import socket, gethostname
 from socket import AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR
 from typing import Tuple, Dict
 from diffiehellman.diffiehellman import DiffieHellman
+from Crypto.Cipher import AES, DES, Blowfish 
+from Crypto.Hash import SHA256
 
 HOST = gethostname()
 PORT = 4600
@@ -126,7 +128,28 @@ def get_key_and_iv(
     `iv` is the *last* `ivlen` bytes of the shared key
     Both key and IV must be returned as bytes
     """
-    raise NotImplementedError
+    byte_shared_key = bytes(shared_key, 'utf-8')
+    
+    # key
+    key = byte_shared_key[:key_size]
+
+    # IV 
+    if cipher_name == "AES":
+        ivlen = AES.block_size
+    elif cipher_name == "DES":
+        ivlen = DES.block_size
+    else:
+        ivlen = Blowfish.block_size
+    IV = byte_shared_key[-ivlen:]
+
+    if cipher_name == "AES":
+        obj = AES.new(key, AES.MODE_CBC, IV)
+    elif cipher_name == "DES":
+        obj = AES.new(key, DES.MODE_CBC, IV)
+    else:
+        obj = AES.new(key, Blowfish.MODE_CBC, IV)
+    
+    return (obj, key, IV)
 
 
 def generate_dhm_response(public_key: int) -> str:
@@ -135,7 +158,7 @@ def generate_dhm_response(public_key: int) -> str:
     :param public_key: public portion of the DHMKE
     :return: string according to the specification
     """
-    raise NotImplementedError
+    return "DHMKE:" + str(public_key)
 
 
 def read_message(msg_cipher: bytes, crypto: object) -> Tuple[str, str]:
@@ -203,6 +226,9 @@ def main():
 
     print("Initializing cryptosystem")
     # Follow the description
+    key_and_iv = get_key_and_iv(str(server_diffiehellman.shared_secret), cipher_name, key_size)
+
+
     print("All systems ready")
 
     while True:

@@ -72,7 +72,28 @@ def get_key_and_iv(
     `iv` is the *last* `ivlen` bytes of the shared key
     Both key and IV must be returned as bytes
     """
-    raise NotImplementedError
+    byte_shared_key = bytes(shared_key, 'utf-8')
+    
+    # key
+    key = byte_shared_key[:key_size]
+
+    # IV 
+    if cipher_name == "AES":
+        ivlen = AES.block_size
+    elif cipher_name == "DES":
+        ivlen = DES.block_size
+    else:
+        ivlen = Blowfish.block_size
+    IV = byte_shared_key[-ivlen:]
+
+    if cipher_name == "AES":
+        obj = AES.new(key, AES.MODE_CBC, IV)
+    elif cipher_name == "DES":
+        obj = AES.new(key, DES.MODE_CBC, IV)
+    else:
+        obj = AES.new(key, Blowfish.MODE_CBC, IV)
+    
+    return (obj, key, IV)
 
 
 def add_padding(message: str) -> str:
@@ -130,7 +151,7 @@ def main():
     dhm_in = client_sckt.recv(4096)
     client_diffiehellman.generate_shared_secret(parse_dhm_reponse(dhm_in))
 
-    
+
 
     print("The key has been established")
 
